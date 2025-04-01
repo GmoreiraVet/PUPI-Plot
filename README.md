@@ -1,6 +1,6 @@
 # PupiPlot 
 ## Pipeline for Uncovering PileUp Information and plotting
-PupiPlot is an improved version of genomealigner, designed to simplify the process of aligning sequencing reads to a reference genome and visualizing coverage depth. The best part? Pupi, the ASCII bunny, is the one doing all the hard work for you! 🐰
+PupiPlot is an improved version of genomealigner, designed to simplify the process of aligning sequencing reads to a reference genome and visualizing coverage depth. 
 
 ## Features
 - Aligns FASTQ reads to a reference genome using `minimap2`
