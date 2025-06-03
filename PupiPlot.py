@@ -11,14 +11,21 @@ def run_command(command):
     subprocess.run(command, shell=True, check=True)
 
 def get_coverage(bam_file):
-    """Function to calculate coverage depth from BAM file"""
+    """Calculate coverage depth for the entire reference genome, including zero coverage."""
     samfile = pysam.AlignmentFile(bam_file, "rb")
-    coverage = [pileupcolumn.n for pileupcolumn in samfile.pileup()]
+    ref_length = samfile.lengths[0]  # length of the first (and assumed only) reference sequence
+    coverage = np.zeros(ref_length, dtype=int)
+    for pileupcolumn in samfile.pileup():
+        pos = pileupcolumn.reference_pos
+        if pos < ref_length:
+            coverage[pos] = pileupcolumn.n
     samfile.close()
     return coverage
 
 def smooth_data(coverage, window_size=50):
     """Function to smooth the data using a moving average"""
+    if len(coverage) < window_size:
+        return coverage  # no smoothing if data shorter than window
     return np.convolve(coverage, np.ones(window_size)/window_size, mode='valid')
 
 def darken_color(color, factor=0.8):
@@ -33,8 +40,8 @@ def plot_coverage(coverage, smoothed_coverage, output_folder):
     selected_color = random.choice(colors)
     line_color = darken_color(selected_color, factor=0.8)
     
-    plt.figure(figsize=(10, 6))
-    plt.plot(smoothed_coverage, color=line_color, label='Smoothed Coverage')
+    plt.figure(figsize=(12, 6))
+    plt.plot(range(len(smoothed_coverage)), smoothed_coverage, color=line_color, label='Smoothed Coverage')
     plt.fill_between(range(len(smoothed_coverage)), smoothed_coverage, color=selected_color, alpha=0.6)
     plt.title("Genome Coverage Depth", color='#333333')
     plt.xlabel("Position on Genome", color='#333333')
@@ -49,12 +56,12 @@ def plot_coverage(coverage, smoothed_coverage, output_folder):
 def print_ascii_bunny():
     """Prints an ASCII art bunny to the terminal"""
     bunny = """
-      /\ /|
-      \ V/
+      /\\ /|
+      \\ V/
       | "")
       /  |
      /  \\
-    *(__\_\)
+    *(__\\_\\)
     """
     print("Pupi has assembled your genome for you!")
     print(bunny)
@@ -78,13 +85,19 @@ def main():
     if combine_fastqs == "yes":
         run_command(f"cat {' '.join([fastq.strip() for fastq in input_fastqs])} > {combined_fastq}")
     
-    # Step 3: Align reads
+    # Step 3: Align reads with loosened minimap2 parameters for better mapping
     if combine_fastqs == "yes":
-        alignment_file = os.path.join(output_folder, "combined_alignment.sam")
-        run_command(f"minimap2 -ax map-ont {reference_mmi} {combined_fastq} > {alignment_file}")
+        alignment_file = os.path.join(output_folder, "alignment.sam")
+        run_command(
+            f"minimap2 -x map-ont -a --secondary=yes -N 50 -p 0.5 -A1 -B2 -O2,32 -E1,0 -k11 -w5 "
+            f"{reference_mmi} {combined_fastq} > {alignment_file}"
+        )
     else:
         alignment_file = os.path.join(output_folder, "alignment.sam")
-        run_command(f"minimap2 -ax map-ont {reference_mmi} {input_fastqs[0].strip()} > {alignment_file}")
+        run_command(
+            f"minimap2 -x map-ont -a --secondary=yes -N 50 -p 0.5 -A1 -B2 -O2,32 -E1,0 -k11 -w5 "
+            f"{reference_mmi} {input_fastqs[0].strip()} > {alignment_file}"
+        )
     
     # Step 4: Convert SAM to sorted BAM
     sorted_bam_file = os.path.join(output_folder, "alignment.sorted.bam")
@@ -93,7 +106,7 @@ def main():
     # Step 5: Index the BAM file
     run_command(f"samtools index {sorted_bam_file}")
     
-    # Step 6: Generate coverage plot
+    # Step 6: Generate coverage plot for the whole genome
     coverage = get_coverage(sorted_bam_file)
     smoothed_coverage = smooth_data(coverage)
     plot_coverage(coverage, smoothed_coverage, output_folder)
@@ -103,4 +116,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
